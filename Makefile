@@ -68,8 +68,8 @@ uninstall:
 
 # Package build/bin into a tar.gz
 package: release
-	@tar -czf $(PACKAGE_FILE).tar.gz -C $(BIN_DIR) .
-	@echo "📦 Packaged binaries into: $(PACKAGE_FILE).tar.gz"
+	@tar -czf $(PACKAGE_FILE) -C $(BIN_DIR) .
+	@echo "📦 Packaged binaries into: $(PACKAGE_FILE)"
 
 # Clean up build artifacts
 clean:
