@@ -11,9 +11,12 @@ LDFLAGS :=
 PREFIX := /usr
 LOCAL_PREFIX := $(HOME)/.local
 
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+
 # Binaries
 RELEASE_BIN := $(BIN_DIR)/$(PROJECT_NAME)
 DEBUG_BIN := $(BIN_DIR)/$(PROJECT_NAME)-debug
+PACKAGE_FILE := $(PROJECT_NAME)-$(VERSION).tar.gz
 
 # Default target
 all: release debug package
@@ -65,8 +68,8 @@ uninstall:
 
 # Package build/bin into a tar.gz
 package: release
-	@tar -czf $(PROJECT_NAME).tar.gz -C $(BIN_DIR) .
-	@echo "📦 Packaged binaries into: $(PROJECT_NAME).tar.gz"
+	@tar -czf $(PACKAGE_FILE).tar.gz -C $(BIN_DIR) .
+	@echo "📦 Packaged binaries into: $(PACKAGE_FILE).tar.gz"
 
 # Clean up build artifacts
 clean:
