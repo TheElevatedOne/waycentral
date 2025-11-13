@@ -12,8 +12,9 @@ jobs:
     - name: Check-out repository
       uses: actions/checkout@v4
 
-    - name: Set Environment
-      run: echo "RELEASE_VERSION=$(git describe --abbrev=0)" >> $GITHUB_ENV
+    - name: Read VERSION file
+      id: getversion
+      run: echo "::set-output name=version::$(cat VERSION)"
 
     - name: Build
       run: make
@@ -23,7 +24,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        artifacts: waycentral-${{ env.RELEASE_VERSION }}.tar.gz
+        artifacts: waycentral-${{ steps.getversion.outputs.version }}.tar.gz
         replacesArtifacts: false
-        name: v${{ env.RELEASE_VERSION }}
+        name: v${{ steps.getversion.outputs.version }}
         allowUpdates: true
