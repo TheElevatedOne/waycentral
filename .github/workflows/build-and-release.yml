@@ -2,6 +2,8 @@ name: Build And Release
 
 on:
   push:
+    tags:
+      - '*'
 
 jobs:
   build:
@@ -29,3 +31,5 @@ jobs:
         name: v${{ steps.getversion.outputs.version }} - waycentral
         allowUpdates: true
         tag: ${{ steps.getversion.outputs.version }}
+        omitBody: true
+        
