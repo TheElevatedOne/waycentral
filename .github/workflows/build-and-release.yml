@@ -26,5 +26,6 @@ jobs:
       with:
         artifacts: waycentral-${{ steps.getversion.outputs.version }}.tar.gz
         replacesArtifacts: false
-        name: v${{ steps.getversion.outputs.version }}
+        name: v${{ steps.getversion.outputs.version }} - waycentral
         allowUpdates: true
+        tag: ${{ steps.getversion.outputs.version }}
