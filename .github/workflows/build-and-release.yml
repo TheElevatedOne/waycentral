@@ -16,7 +16,7 @@ jobs:
       run: make
 
     - name: Create Github Release
-      uses: ncipollo/release-action@v1
+      uses: ncipollo/release-action@v1.20.0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
