@@ -1,7 +1,7 @@
 # Maintainer: Adam 'TheElevatedOne' Mladý <admin@elevated.ovh> -> https://github.com/TheElevatedOne
 
 pkgname=waycentral-git
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc="Centalized Program for Waybar Custom Modules"
 arch=('any')
@@ -29,7 +29,7 @@ build() {
 
 package() {
   set -e
-  cd wayweather
+  cd waycentral
   cd build/bin/
 
   install -Dm755 waycentral "${pkgdir}/usr/bin/waycentral"
