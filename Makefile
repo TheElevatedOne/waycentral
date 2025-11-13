@@ -11,7 +11,7 @@ LDFLAGS :=
 PREFIX := /usr
 LOCAL_PREFIX := $(HOME)/.local
 
-VERSION := $(shell cat VERSION || echo "0.0.0")
+VERSION := $(shell cat ./VERSION || echo "0.0.0")
 
 # Binaries
 RELEASE_BIN := $(BIN_DIR)/$(PROJECT_NAME)
