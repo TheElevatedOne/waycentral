@@ -12,15 +12,19 @@ jobs:
     - name: Check-out repository
       uses: actions/checkout@v4
 
+    - name: Read VERSION file
+      id: getversion
+      run: echo "::set-output name=version::$(cat VERSION)"
+
     - name: Build
       run: make
 
     - name: Create Github Release
-      uses: ncipollo/release-action@v1
+      uses: ncipollo/release-action@v1.20.0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        artifacts: waycentral-${{ github.ref_name }}.tar.gz
+        artifacts: waycentral-${{ steps.getversion.outputs.version }}.tar.gz
         replacesArtifacts: false
-        name: v${{ github.ref_name }}
+        name: v${{ steps.getversion.outputs.version }}
         allowUpdates: true
