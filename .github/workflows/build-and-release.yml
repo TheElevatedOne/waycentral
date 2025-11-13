@@ -19,7 +19,7 @@ jobs:
       run: echo "::set-output name=version::$(cat VERSION)"
 
     - name: Build
-      run: make
+      run: make VERSION=${{ steps.getversion.outputs.version }}
 
     - name: Create Github Release
       uses: ncipollo/release-action@v1.20.0
