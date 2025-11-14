@@ -46,6 +46,7 @@ static void help_message() {
 
 int main(int argc, char *argv[]) {
   struct arguments *args = malloc(sizeof(struct arguments));
+  setbuf(stdout, NULL);
 
   for (int i = 0; i < argc; i++) {
     if (strcmp("-c", argv[i]) == 0 || strcmp("--clock", argv[i]) == 0) {
