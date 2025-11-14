@@ -94,7 +94,7 @@ void get_clock(const int type) {
   char *clock = get_time(type);
 
   char *json = malloc(512);
-  sprintf(json, "{\"text\":\"%s\",\"tooltip\":\"Uptime: %s\\nBirth: %s\"}",
+  sprintf(json, "{\"text\":\"%s\",\"tooltip\":\"Uptime:\\t%s\\nBirth:\\t%s\"}",
           clock, uptime, birth);
   free(birth);
   free(clock);

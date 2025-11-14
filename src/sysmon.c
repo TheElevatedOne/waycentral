@@ -35,7 +35,7 @@ void system_monitor(int type) {
 
     for (int i = 1; i < cpu->count; i++) {
       char *temp = malloc(128);
-      sprintf(temp, "CPU%d: %d%%", i - 1, cpu->usage[i]);
+      sprintf(temp, "CPU%d:\\t%d%%", i - 1, cpu->usage[i]);
       if (i != cpu->count - 1) {
         sprintf(temp, "%s\\n", temp);
       } else {
@@ -59,35 +59,37 @@ void system_monitor(int type) {
     float swap_used = ((float)mem->swap_used * 100) / (float)mem->swap_total;
     float swap_free = ((float)mem->swap_free * 100) / (float)mem->swap_total;
 
-    sprintf(json,
-            "{\"text\":\"%d%%\",\"tooltip\":\"Total RAM: %s\\nUsed RAM: "
-            "%s (%.1f%%)\\nFree RAM: %s (%.1f%%)\\nAvailable RAM: %s "
-            "(%.1f%%)\\nBuffered RAM: %s (%.1f%%)\\nCached RAM: %s "
-            "(%.1f%%)\\nShared RAM: %s (%.1f%%)\\n\\nTotal Swap: %s\\nUsed "
-            "Swap %s (%.1f%%)\\nFree Swap: %s (%.1f%%)\"}",
-            mem_used_title, unitConversion(1, mem->mem_total, 1),
-            unitConversion(1, mem->mem_used, 1), mem_used,
-            unitConversion(1, mem->mem_free, 1), mem_free,
-            unitConversion(1, mem->mem_available, 1), mem_avail,
-            unitConversion(1, mem->buffers, 1), mem_buff,
-            unitConversion(1, mem->cached, 1), mem_cache,
-            unitConversion(1, mem->shared_mem, 1), mem_shared,
-            unitConversion(1, mem->swap_total, 1),
-            unitConversion(1, mem->swap_used, 1), swap_used,
-            unitConversion(1, mem->swap_free, 1), swap_free);
+    sprintf(
+        json,
+        "{\"text\":\"%d%%\",\"tooltip\":\"<b>RAM:</b>\\nTotal:\\t%s\\nUsed:\\t"
+        "%s (%.1f%%)\\nFree:\\t%s (%.1f%%)\\nAvailable:\\t%s "
+        "(%.1f%%)\\nBuffered:\\t%s (%.1f%%)\\nCached:\\t%s "
+        "(%.1f%%)\\nShared:\\t%s "
+        "(%.1f%%)\\n\\n<b>SWAP:<b>\\nTotal:\\t%s\\nUsed:\\t"
+        "%s (%.1f%%)\\nFree:\\t%s (%.1f%%)\"}",
+        mem_used_title, unitConversion(1, mem->mem_total, 1),
+        unitConversion(1, mem->mem_used, 1), mem_used,
+        unitConversion(1, mem->mem_free, 1), mem_free,
+        unitConversion(1, mem->mem_available, 1), mem_avail,
+        unitConversion(1, mem->buffers, 1), mem_buff,
+        unitConversion(1, mem->cached, 1), mem_cache,
+        unitConversion(1, mem->shared_mem, 1), mem_shared,
+        unitConversion(1, mem->swap_total, 1),
+        unitConversion(1, mem->swap_used, 1), swap_used,
+        unitConversion(1, mem->swap_free, 1), swap_free);
 
     printf("%s\n", json);
   } else if (type == 2) {
     struct netstat_t *net = get_network_stats(1000);
     char *json = malloc(128);
 
-    sprintf(json,
-            "{\"text\":\"%s/s\",\"tooltip\":\" %s/s [%s]\\n %s/s [%s]\"}",
-            unitConversion(0, net->down_speed + net->up_speed, 0),
-            unitConversion(0, net->down_speed, 0),
-            unitConversion(0, net->download, 2),
-            unitConversion(0, net->up_speed, 0),
-            unitConversion(0, net->upload, 2));
+    sprintf(
+        json,
+        "{\"text\":\"%s/s\",\"tooltip\":\" %s/s\\t[%s]\\n %s/s\\t[%s]\"}",
+        unitConversion(0, net->down_speed + net->up_speed, 0),
+        unitConversion(0, net->down_speed, 0),
+        unitConversion(0, net->download, 2),
+        unitConversion(0, net->up_speed, 0), unitConversion(0, net->upload, 2));
     printf("%s\n", json);
   } else {
     printf("Not Implemented");
