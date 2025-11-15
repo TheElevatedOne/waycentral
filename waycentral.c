@@ -1,6 +1,8 @@
+#include "src/ap.h"
 #include "src/batt.h"
 #include "src/clock.h"
 #include "src/date.h"
+#include "src/lock.h"
 #include "src/sysmon.h"
 #include <stdbool.h>
 #include <stdio.h>
@@ -13,6 +15,8 @@ struct arguments {
   bool date;
   bool battery;
   bool sysmon;
+  bool keys;
+  bool ap;
   bool help;
 };
 
@@ -24,7 +28,8 @@ struct sysmon {
 };
 
 static void help_message() {
-  printf("> waycentral [-h/--help] [OPTIONS]\n\nCentralized Program for Waybar "
+  printf("> waycentral [-h/--help] "
+         "[OPTIONS]\n\nCentralized Program for Waybar "
          "Modules\n\nHELP:\n  -h, --help    Show this help message\n  -v, "
          "--version Show version\n  Defaults are MY "
          "prefercences (shown with a *).\n\nOPTIONS:\n  -c, --clock [24H, "
@@ -41,7 +46,12 @@ static void help_message() {
          "--battery Print Waybar JSON for battery.\n  -s, --sysmon [CPU, MEM, "
          "NET]\n                Print Waybar JSON for system\n                "
          "monitoring.\n                CPU -> CPU Utilization;\n               "
-         " MEM -> RAM Usage;\n                NET -> Network Usage.\n\n");
+         " MEM -> RAM Usage;\n                NET -> Network Usage.\n  -k, "
+         "--keys [CAPS, NUM, SCROLL]\n                Print Waybar JSON class "
+         "for each\n                lock key.\n                CAPS -> Caps "
+         "Lock\n                NUM -> Num Lock\n                SCROLL -> "
+         "Scroll Lock\n  -a, --hotspot Print Waybar JSON for hotspot using\n   "
+         "             \"create_ap\". (ex. linux-wifi-hotspot)\n\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -58,6 +68,11 @@ int main(int argc, char *argv[]) {
       args->battery = true;
     } else if (strcmp("-s", argv[i]) == 0 || strcmp("--sysmon", argv[i]) == 0) {
       args->sysmon = true;
+    } else if (strcmp("-k", argv[i]) == 0 || strcmp("--keys", argv[i]) == 0) {
+      args->keys = true;
+    } else if (strcmp("-a", argv[i]) == 0 ||
+               strcmp("--hotspot", argv[i]) == 0) {
+      args->ap = true;
     } else {
       args->help = true;
     }
@@ -145,6 +160,33 @@ int main(int argc, char *argv[]) {
           sleep(5);
         }
       }
+    }
+  } else if (args->keys) {
+    for (int i = 1; i < argc; i++) {
+      if (argc == 2) {
+        printf("Error: Not Enough Arguments!\n");
+        return 1;
+      } else if (strcmp("CAPS", argv[i]) == 0) {
+        while (true) {
+          lock_keys(0);
+          sleep(1);
+        }
+      } else if (strcmp("NUM", argv[i]) == 0) {
+        while (true) {
+          lock_keys(1);
+          sleep(1);
+        }
+      } else if (strcmp("SCROLL", argv[i]) == 0) {
+        while (true) {
+          lock_keys(2);
+          sleep(1);
+        }
+      }
+    }
+  } else if (args->ap) {
+    while (true) {
+      get_hotspot();
+      sleep(1);
     }
   } else {
     help_message();

@@ -17,6 +17,7 @@ VERSION := $(shell cat ./VERSION || echo "0.0.0")
 RELEASE_BIN := $(BIN_DIR)/$(PROJECT_NAME)
 DEBUG_BIN := $(BIN_DIR)/$(PROJECT_NAME)-debug
 PACKAGE_FILE := $(PROJECT_NAME)-$(VERSION).tar.gz
+TEST_BIN := ./$(PROJECT_NAME)-test
 
 # Default target
 all: release debug package
@@ -28,6 +29,10 @@ release: $(RELEASE_BIN)
 # Compile debug
 debug: CFLAGS := $(DEBUG_FLAGS)
 debug: $(DEBUG_BIN)
+
+# Compile test
+test: 
+	$(CC) $(CFLAGS) $(SRCS) -o $(PROJECT_NAME)-test
 
 # Linking rules
 $(RELEASE_BIN): $(OBJS)
