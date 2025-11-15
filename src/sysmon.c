@@ -65,7 +65,7 @@ void system_monitor(int type) {
         "%s (%.1f%%)\\nFree:\\t%s (%.1f%%)\\nAvailable:\\t%s "
         "(%.1f%%)\\nBuffered:\\t%s (%.1f%%)\\nCached:\\t%s "
         "(%.1f%%)\\nShared:\\t%s "
-        "(%.1f%%)\\n\\n<b>SWAP:<b>\\nTotal:\\t%s\\nUsed:\\t"
+        "(%.1f%%)\\n\\n<b>SWAP:</b>\\nTotal:\\t%s\\nUsed:\\t"
         "%s (%.1f%%)\\nFree:\\t%s (%.1f%%)\"}",
         mem_used_title, unitConversion(1, mem->mem_total, 1),
         unitConversion(1, mem->mem_used, 1), mem_used,
