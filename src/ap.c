@@ -98,12 +98,12 @@ void get_hotspot(void) {
   struct hotspot_t ap = parse_ap();
 
   if (ap.class != 0) {
-    printf("{\"class\":\"off\",\"percentage\":\"0\",\"tooltip\":\"Hotspot "
+    printf("{\"class\":\"off\",\"alt\":\"off\",\"tooltip\":\"Hotspot "
            "Inactive\"}\n");
   } else {
-    printf("{\"class\":\"on\",\"percentage\":\"100\",\"tooltip\":\"<b>SSID:</"
+    printf("{\"class\":\"on\",\"alt\":\"on\",\"tooltip\":\"<b>SSID:</"
            "b>\\t%s\\n<b>PASS:</b>\\t%s\\n\\n<b>FREQ:</"
-           "b>\\t%s\\n<b>AP_IFACE:</b>\\t%s\\n<b>NET_IFACE:</"
+           "b>\\t%s GHz\\n<b>AP_IFACE:</b>\\t%s\\n<b>NET_IFACE:</"
            "b>\\t%s\\n<b>HIDDEN:</b>\\t%s\"}\n",
            ap.ssid, ap.passwd, ap.freq, ap.ap_iface, ap.eth_iface,
            (ap.hidden == 1) ? "Yes" : "No");
