@@ -62,8 +62,8 @@ void system_monitor(int type) {
     sprintf(
         json,
         "{\"text\":\"%d%%\",\"tooltip\":\"<b>RAM:</b>\\nTotal:\\t%s\\nUsed:\\t"
-        "%s (%.1f%%)\\nFree:\\t%s (%.1f%%)\\nAvailable:\\t%s "
-        "(%.1f%%)\\nBuffered:\\t%s (%.1f%%)\\nCached:\\t%s "
+        "%s (%.1f%%)\\nFree:\\t%s (%.1f%%)\\nAvail:\\t%s "
+        "(%.1f%%)\\nBuff:\\t%s (%.1f%%)\\nCached:\\t%s "
         "(%.1f%%)\\nShared:\\t%s "
         "(%.1f%%)\\n\\n<b>SWAP:</b>\\nTotal:\\t%s\\nUsed:\\t"
         "%s (%.1f%%)\\nFree:\\t%s (%.1f%%)\"}",

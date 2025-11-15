@@ -213,9 +213,9 @@ void format_batt(void) {
 
     sprintf(json,
             "%s<b>%s:</"
-            "b>\\t%s\\nManufact:\\t%s\\nTech:\\t%s\\nStatus:\\t%"
-            "s\\nCharge:\\t%d%%\\nHealth:\\t%lu%%\\nVoltage:\\t%.1f "
-            "V\\nCurrent:\\t%.1f A\\nCharging:\\t%.1f W",
+            "b>\\t%s\\nManuf:\\t%s\\nTech:\\t%s\\nStatus:\\t%"
+            "s\\nCharge:\\t%d%%\\nHealth:\\t%lu%%\\nVolt:\\t%.1f "
+            "V\\nCurr:\\t%.1f A\\nPower:\\t%.1f W",
             json, b->name, b->model_name, b->manufacturer, b->technology,
             b->status, b->capacity, ((b->full * 100) / b->full_design), voltage,
             current, power);

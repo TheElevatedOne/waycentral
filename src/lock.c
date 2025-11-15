@@ -74,12 +74,16 @@ void lock_keys(int type) {
 
   // Caps Lock
   if (type == 0) {
-    printf("{\"class\":\"%s\"}\n", (keys.caps == 1) ? "on" : "off");
+    printf("{\"class\":\"%s\",\"tooltip\":\"Capslock %s\"}\n",
+           (keys.caps == 1) ? "on" : "off", (keys.caps == 1) ? "On" : "Off");
     // Num Lock
   } else if (type == 1) {
-    printf("{\"class\":\"%s\"}\n", (keys.num == 1) ? "on" : "off");
+    printf("{\"class\":\"%s\",\"tooltip\":\"Numock %s\"}\n",
+           (keys.num == 1) ? "on" : "off", (keys.num == 1) ? "On" : "Off");
     // Scroll Lock
   } else if (type == 2) {
-    printf("{\"class\":\"%s\"}\n", (keys.scroll == 1) ? "on" : "off");
+    printf("{\"class\":\"%s\",\"tooltip\":\"Scrolllock %s\"}\n",
+           (keys.scroll == 1) ? "on" : "off",
+           (keys.scroll == 1) ? "On" : "Off");
   }
 }
