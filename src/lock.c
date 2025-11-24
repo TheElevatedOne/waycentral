@@ -78,7 +78,7 @@ void lock_keys(int type) {
            (keys.caps == 1) ? "on" : "off", (keys.caps == 1) ? "On" : "Off");
     // Num Lock
   } else if (type == 1) {
-    printf("{\"class\":\"%s\",\"tooltip\":\"Numock %s\"}\n",
+    printf("{\"class\":\"%s\",\"tooltip\":\"Numlock %s\"}\n",
            (keys.num == 1) ? "on" : "off", (keys.num == 1) ? "On" : "Off");
     // Scroll Lock
   } else if (type == 2) {
