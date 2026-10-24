@@ -1,104 +1,86 @@
-#include <stdbool.h>
+#define _GNU_SOURCE
+#include "../waycentral.h"
+#include "util.h"
+#include <fcntl.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
 
-static char *get_uptime() {
+long wc_uptime(void) {
   FILE *file = fopen("/proc/uptime", "r");
-  double uptime = 0, idle = 0;
-  fscanf(file, "%lf %lf", &uptime, &idle);
+  if (!file)
+    return -1;
+
+  double uptime = 0;
+  int ok = fscanf(file, "%lf", &uptime) == 1;
   fclose(file);
 
-  long uptime_long = (long)uptime;
-
-  typedef struct {
-    int days;
-    int hours;
-    int minutes;
-    int seconds;
-  } count_t;
-
-  count_t *ct = malloc(sizeof(count_t));
-
-  ct->days = 0;
-  ct->hours = 0;
-  ct->minutes = 0;
-  ct->seconds = 0;
-
-  if (uptime_long >= (24 * 3600)) {
-    ct->days = (int)(uptime_long / (24 * 3600));
-    uptime_long %= (24 * 3600);
-  }
-  if (uptime_long >= 3600) {
-    ct->hours = (int)(uptime_long / 3600);
-    uptime_long %= 3600;
-  }
-  if (uptime_long >= 60) {
-    ct->minutes = (int)(uptime_long / 60);
-    uptime_long %= 60;
-  }
-  ct->seconds = (int)uptime_long;
-
-  char *value = malloc(128);
-
-  sprintf(value, "");
-
-  if (ct->days != 0) {
-    sprintf(value, "%d day/s ", ct->days);
-  }
-
-  sprintf(value, "%s%02d:%02d:%02d", value, ct->hours, ct->minutes,
-          ct->seconds);
-
-  return value;
+  return ok ? (long)uptime : -1;
 }
 
-static char *get_birth() {
-  FILE *stat = popen("stat -c %W /", "r");
-  long birth;
+long wc_system_age_days(void) {
+  struct statx stx;
+  if (statx(AT_FDCWD, "/", 0, STATX_BTIME, &stx) != 0 ||
+      !(stx.stx_mask & STATX_BTIME))
+    return -1;
+
   long now = (long)time(NULL);
-  fscanf(stat, "%lu", &birth);
-  pclose(stat);
-
-  long birthday = ((now - birth) / (24 * 3600));
-
-  char *value = malloc(128);
-  sprintf(value, "%lu day/s", birthday);
-
-  return value;
+  return (now - (long)stx.stx_btime.tv_sec) / (24 * 3600);
 }
 
-static char *get_time(const int type) {
-  time_t now = time(NULL);
-  struct tm *local = malloc(sizeof(struct tm));
-  localtime_r(&now, local);
-
-  char *time_ = malloc(128);
-  if (type == 0) {
-    strftime(time_, 128, "%H:%M:%S", local);
-  } else if (type == 1) {
-    strftime(time_, 128, "%I:%M:%S %p", local);
-  } else if (type == 2) {
-    strftime(time_, 128, "%I:%M:%S", local);
-  } else {
-    sprintf(time_, "NULL");
+static void format_uptime(char *out, size_t size, long uptime) {
+  if (uptime < 0) {
+    snprintf(out, size, "Unknown");
+    return;
   }
 
-  return time_;
+  long days = uptime / (24 * 3600);
+  int hours = (int)(uptime % (24 * 3600) / 3600);
+  int minutes = (int)(uptime % 3600 / 60);
+  int seconds = (int)(uptime % 60);
+
+  if (days != 0)
+    snprintf(out, size, "%ld day/s %02d:%02d:%02d", days, hours, minutes,
+             seconds);
+  else
+    snprintf(out, size, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-void get_clock(const int type) {
-  char *birth = get_birth();
-  char *uptime = get_uptime();
-  char *clock = get_time(type);
+static void format_time(char *out, size_t size, enum wc_clock_format format) {
+  time_t now = time(NULL);
+  struct tm local;
+  localtime_r(&now, &local);
 
-  char *json = malloc(512);
-  sprintf(json, "{\"text\":\"%s\",\"tooltip\":\"Uptime:\\t%s\\nBirth:\\t%s\"}",
-          clock, uptime, birth);
-  free(birth);
-  free(clock);
-  free(uptime);
-  printf("%s\n", json);
-  free(json);
+  switch (format) {
+  case WC_CLOCK_24H:
+    strftime(out, size, "%H:%M:%S", &local);
+    break;
+  case WC_CLOCK_12H_AMPM:
+    strftime(out, size, "%I:%M:%S %p", &local);
+    break;
+  case WC_CLOCK_12H:
+    strftime(out, size, "%I:%M:%S", &local);
+    break;
+  default:
+    snprintf(out, size, "NULL");
+  }
+}
+
+char *wc_clock_json(enum wc_clock_format format) {
+  char clock[64], uptime[64], birth[64];
+
+  format_time(clock, sizeof(clock), format);
+  format_uptime(uptime, sizeof(uptime), wc_uptime());
+
+  long age = wc_system_age_days();
+  if (age < 0)
+    snprintf(birth, sizeof(birth), "Unknown");
+  else
+    snprintf(birth, sizeof(birth), "%ld day/s", age);
+
+  struct wc_buf json = {0};
+  wc_buf_appendf(&json,
+                 "{\"text\":\"%s\",\"tooltip\":\"Uptime:\\t%s\\nBirth:\\t%s\"}",
+                 clock, uptime, birth);
+  return wc_buf_finish(&json);
 }

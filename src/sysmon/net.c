@@ -1,72 +1,69 @@
-#include <stdbool.h>
+#include "../../waycentral.h"
+#include "../util.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
-struct netstat_t {
-  unsigned long long upload;
-  unsigned long long download;
-  unsigned long long up_speed;
-  unsigned long long down_speed;
-};
+static int is_active_dev(const char *device) {
+  static const char *inactive[] = {"lo",    "docker", "veth", "br-",
+                                   "vmnet", "tun",    "tap"};
 
-static bool is_active_dev(const char *device) {
-  const char inactive[7][7] = {"lo",    "docker", "veth", "br-",
-                               "vmnet", "tun",    "tap"};
-
-  for (int i = 0; i < 7; i++) {
-    if (strncmp(device, inactive[i], strlen(inactive[i])) == 0) {
-      return false;
-    }
+  for (size_t i = 0; i < sizeof(inactive) / sizeof(inactive[0]); i++) {
+    if (strncmp(device, inactive[i], strlen(inactive[i])) == 0)
+      return 0;
   }
-  return true;
+  return 1;
 }
 
-struct netstat_t *get_network_stats(int interval_ms) {
-  unsigned long long rx[2], tx[2];
-  struct netstat_t *stats = malloc(sizeof(struct netstat_t));
+static int read_totals(unsigned long long *rx, unsigned long long *tx) {
+  FILE *file = fopen("/proc/net/dev", "r");
+  if (!file)
+    return -1;
 
+  char line[512];
+  *rx = 0;
+  *tx = 0;
+
+  // Skip the two header lines
   for (int i = 0; i < 2; i++) {
-
-    FILE *file = fopen("/proc/net/dev", "r");
-
-    char *line = malloc(256);
-    int count = 0;
-    int max = 32;
-
-    fgets(line, 256, file);
-    fgets(line, 256, file);
-
-    rx[i] = 0;
-    tx[i] = 0;
-
-    while (fgets(line, 256, file) && count < max) {
-      char *name = malloc(64);
-      unsigned long long rx_bytes, tx_bytes = 0;
-      if (sscanf(line, " %31[^:]: %llu %*u %*u %*u %*u %*u %*u %*u %llu", name,
-                 &rx_bytes, &tx_bytes) == 3) {
-        if (is_active_dev(name)) {
-          rx[i] += rx_bytes;
-          tx[i] += tx_bytes;
-        }
-      }
-    }
-    fclose(file);
-    free(line);
-
-    if (i == 0) {
-      struct timespec ts;
-      ts.tv_sec = interval_ms / 1000;
-      ts.tv_nsec = (interval_ms % 1000) * 1000000L;
-      nanosleep(&ts, NULL);
+    if (!fgets(line, sizeof(line), file)) {
+      fclose(file);
+      return -1;
     }
   }
 
-  stats->upload = tx[1];
-  stats->download = rx[1];
-  stats->up_speed = tx[1] - tx[0];
-  stats->down_speed = rx[1] - rx[0];
+  while (fgets(line, sizeof(line), file)) {
+    char name[64];
+    unsigned long long rx_bytes = 0, tx_bytes = 0;
+    if (sscanf(line, " %63[^:]: %llu %*u %*u %*u %*u %*u %*u %*u %llu", name,
+               &rx_bytes, &tx_bytes) == 3 &&
+        is_active_dev(name)) {
+      *rx += rx_bytes;
+      *tx += tx_bytes;
+    }
+  }
 
-  return stats;
+  fclose(file);
+  return 0;
+}
+
+int wc_netstat_get(struct wc_netstat *out, int interval_ms) {
+  unsigned long long rx[2], tx[2];
+
+  if (read_totals(&rx[0], &tx[0]) != 0)
+    return -1;
+  wc_sleep_ms(interval_ms);
+  if (read_totals(&rx[1], &tx[1]) != 0)
+    return -1;
+
+  if (interval_ms <= 0)
+    interval_ms = 1000;
+
+  out->upload = tx[1];
+  out->download = rx[1];
+  // Counters drop when an interface goes away
+  out->up_speed = (tx[1] > tx[0]) ? (tx[1] - tx[0]) * 1000 / interval_ms : 0;
+  out->down_speed =
+      (rx[1] > rx[0]) ? (rx[1] - rx[0]) * 1000 / interval_ms : 0;
+
+  return 0;
 }

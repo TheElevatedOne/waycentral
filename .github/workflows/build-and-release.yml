@@ -4,11 +4,15 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
 
 jobs:
   build:
 
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
 
     steps:
     - name: Check-out repository
@@ -16,7 +20,7 @@ jobs:
 
     - name: Read VERSION file
       id: getversion
-      run: echo "::set-output name=version::$(cat VERSION)"
+      run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
     - name: Build
       run: make VERSION=${{ steps.getversion.outputs.version }}
@@ -31,5 +35,5 @@ jobs:
         name: v${{ steps.getversion.outputs.version }} - waycentral
         allowUpdates: true
         tag: ${{ steps.getversion.outputs.version }}
+        commit: ${{ github.sha }}
         omitBody: true
-        

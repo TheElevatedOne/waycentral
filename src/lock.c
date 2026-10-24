@@ -1,89 +1,86 @@
+#include "../waycentral.h"
+#include "util.h"
 #include <fcntl.h>
-#include <linux/input-event-codes.h>
 #include <linux/input.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-struct lock_key_t {
-  int caps;
-  int num;
-  int scroll;
-};
+#define BITS_PER_LONG (8 * sizeof(unsigned long))
+#define NLONGS(x) (((x) + BITS_PER_LONG - 1) / BITS_PER_LONG)
+
+static int test_bit(const unsigned long *bits, int bit) {
+  return (bits[bit / BITS_PER_LONG] >> (bit % BITS_PER_LONG)) & 1UL;
+}
 
 static int has_capability(int fd, int ev_type, int code) {
-  unsigned long bits[128] = {0}; // plenty big
+  unsigned long bits[NLONGS(KEY_MAX + 1)] = {0};
 
   if (ioctl(fd, EVIOCGBIT(ev_type, sizeof(bits)), bits) < 0)
     return 0;
 
-  return bits[code / (8 * sizeof(unsigned long))] &
-         (1UL << (code % (8 * sizeof(unsigned long))));
+  return test_bit(bits, code);
 }
 
-static struct lock_key_t get_lock_keys(void) {
-  struct lock_key_t keys;
-
+static int open_keyboard(void) {
   char path[64];
-  int fd = -1;
 
   // Try up to 32 event devices
   for (int i = 0; i < 32; i++) {
     snprintf(path, sizeof(path), "/dev/input/event%d", i);
 
-    int test_fd = open(path, O_RDONLY);
-    if (test_fd < 0)
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
       continue;
 
-    int is_keyboard = has_capability(test_fd, EV_KEY, KEY_A) &&
-                      has_capability(test_fd, EV_LED, LED_CAPSL);
+    if (has_capability(fd, EV_KEY, KEY_A) &&
+        has_capability(fd, EV_LED, LED_CAPSL))
+      return fd;
 
-    if (is_keyboard) {
-      fd = test_fd;
-      break;
-    }
-
-    close(test_fd);
-  }
-
-  if (fd < 0) {
-    fprintf(stderr, "Keyboard not found.\n");
-    exit(1);
-  }
-
-  unsigned long leds = 0;
-  if (ioctl(fd, EVIOCGLED(sizeof(leds)), &leds) < 0) {
-    perror("ioctl");
     close(fd);
-    exit(1);
   }
 
-  keys.caps = (leds & (1 << LED_CAPSL)) ? 1 : 0;
-  keys.num = (leds & (1 << LED_NUML)) ? 1 : 0;
-  keys.scroll = (leds & (1 << LED_SCROLLL)) ? 1 : 0;
-
-  close(fd);
-
-  return keys;
+  return -1;
 }
 
-void lock_keys(int type) {
-  struct lock_key_t keys = get_lock_keys();
+int wc_lock_keys_get(struct wc_lock_keys *out) {
+  int fd = open_keyboard();
+  if (fd < 0)
+    return -1;
 
-  // Caps Lock
-  if (type == 0) {
-    printf("{\"class\":\"%s\",\"tooltip\":\"Capslock %s\"}\n",
-           (keys.caps == 1) ? "on" : "off", (keys.caps == 1) ? "On" : "Off");
-    // Num Lock
-  } else if (type == 1) {
-    printf("{\"class\":\"%s\",\"tooltip\":\"Numlock %s\"}\n",
-           (keys.num == 1) ? "on" : "off", (keys.num == 1) ? "On" : "Off");
-    // Scroll Lock
-  } else if (type == 2) {
-    printf("{\"class\":\"%s\",\"tooltip\":\"Scrolllock %s\"}\n",
-           (keys.scroll == 1) ? "on" : "off",
-           (keys.scroll == 1) ? "On" : "Off");
+  unsigned long leds[NLONGS(LED_MAX + 1)] = {0};
+  int r = ioctl(fd, EVIOCGLED(sizeof(leds)), leds);
+  close(fd);
+  if (r < 0)
+    return -1;
+
+  out->caps = test_bit(leds, LED_CAPSL);
+  out->num = test_bit(leds, LED_NUML);
+  out->scroll = test_bit(leds, LED_SCROLLL);
+  return 0;
+}
+
+char *wc_lock_key_json(enum wc_lock_key key) {
+  static const char *names[] = {"Capslock", "Numlock", "Scrolllock"};
+  if (key < WC_KEY_CAPS || key > WC_KEY_SCROLL)
+    return NULL;
+
+  struct wc_buf json = {0};
+  struct wc_lock_keys keys;
+
+  if (wc_lock_keys_get(&keys) != 0) {
+    wc_buf_appendf(&json,
+                   "{\"class\":\"unknown\",\"tooltip\":\"%s Unknown "
+                   "(Keyboard Not Found)\"}",
+                   names[key]);
+    return wc_buf_finish(&json);
   }
+
+  int on = (key == WC_KEY_CAPS)  ? keys.caps
+           : (key == WC_KEY_NUM) ? keys.num
+                                 : keys.scroll;
+
+  wc_buf_appendf(&json, "{\"class\":\"%s\",\"tooltip\":\"%s %s\"}",
+                 on ? "on" : "off", names[key], on ? "On" : "Off");
+  return wc_buf_finish(&json);
 }

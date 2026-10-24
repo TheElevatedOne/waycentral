@@ -1,22 +1,18 @@
+#include "../../waycentral.h"
+#include "../util.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
-#define MAX_CPUS 256
+#define MAX_CPUS 1024
 
 typedef struct {
-  unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
+  unsigned long long idle;
   unsigned long long total;
 } cpu_stat_t;
 
-struct cpu_usage_t {
-  int count;
-  int *usage;
-};
-
-// Read CPU stats from /proc/stat
-static int read_cpu_stats(cpu_stat_t *stats, int *cpu_count) {
+// Read CPU stats from /proc/stat, returns the number of entries or -1
+static int read_cpu_stats(cpu_stat_t *stats, int max) {
   FILE *fp = fopen("/proc/stat", "r");
   if (!fp)
     return -1;
@@ -24,77 +20,78 @@ static int read_cpu_stats(cpu_stat_t *stats, int *cpu_count) {
   char line[1024];
   int count = 0;
 
-  while (fgets(line, sizeof(line), fp)) {
+  while (count < max && fgets(line, sizeof(line), fp)) {
     if (strncmp(line, "cpu", 3) != 0)
       break;
 
-    if (count >= MAX_CPUS)
-      break;
+    unsigned long long user = 0, nice = 0, system = 0, idle = 0, iowait = 0,
+                       irq = 0, softirq = 0, steal = 0;
+    if (sscanf(line, "%*s %llu %llu %llu %llu %llu %llu %llu %llu", &user,
+               &nice, &system, &idle, &iowait, &irq, &softirq, &steal) < 4)
+      continue;
 
-    char label[10];
-    sscanf(line, "%s %llu %llu %llu %llu %llu %llu %llu %llu", label,
-           &stats[count].user, &stats[count].nice, &stats[count].system,
-           &stats[count].idle, &stats[count].iowait, &stats[count].irq,
-           &stats[count].softirq, &stats[count].steal);
-
-    stats[count].total = stats[count].user + stats[count].nice +
-                         stats[count].system + stats[count].idle +
-                         stats[count].iowait + stats[count].irq +
-                         stats[count].softirq + stats[count].steal;
-
+    stats[count].idle = idle + iowait;
+    stats[count].total =
+        user + nice + system + idle + iowait + irq + softirq + steal;
     count++;
   }
 
   fclose(fp);
-  *cpu_count = count;
-  return 0;
+  return count;
 }
 
-// Get CPU usage (returns dynamically allocated struct)
-struct cpu_usage_t *get_cpu_usage(int interval_ms) {
-  cpu_stat_t prev[MAX_CPUS], curr[MAX_CPUS];
-  int cpu_count;
+struct wc_cpu_usage *wc_cpu_usage_get(int interval_ms) {
+  cpu_stat_t *prev = calloc(MAX_CPUS, sizeof(cpu_stat_t));
+  cpu_stat_t *curr = calloc(MAX_CPUS, sizeof(cpu_stat_t));
+  struct wc_cpu_usage *result = NULL;
 
-  if (read_cpu_stats(prev, &cpu_count) != 0)
-    return NULL;
+  if (!prev || !curr)
+    goto out;
 
-  struct timespec ts;
-  ts.tv_sec = interval_ms / 1000;
-  ts.tv_nsec = (interval_ms % 1000) * 1000000L;
-  nanosleep(&ts, NULL);
+  int prev_count = read_cpu_stats(prev, MAX_CPUS);
+  if (prev_count <= 0)
+    goto out;
 
-  if (read_cpu_stats(curr, &cpu_count) != 0)
-    return NULL;
+  wc_sleep_ms(interval_ms);
 
-  struct cpu_usage_t *result = malloc(sizeof(struct cpu_usage_t));
+  int cpu_count = read_cpu_stats(curr, MAX_CPUS);
+  if (cpu_count <= 0)
+    goto out;
+  if (cpu_count > prev_count)
+    cpu_count = prev_count; // a CPU came online in between
+
+  result = malloc(sizeof(*result));
   if (!result)
-    return NULL;
+    goto out;
 
   result->count = cpu_count;
   result->usage = calloc(cpu_count, sizeof(int));
   if (!result->usage) {
     free(result);
-    return NULL;
+    result = NULL;
+    goto out;
   }
 
   for (int i = 0; i < cpu_count; i++) {
+    if (curr[i].total <= prev[i].total || curr[i].idle < prev[i].idle)
+      continue;
     unsigned long long total_diff = curr[i].total - prev[i].total;
     unsigned long long idle_diff = curr[i].idle - prev[i].idle;
+    if (idle_diff > total_diff)
+      idle_diff = total_diff;
 
-    int usage = 0;
-    if (total_diff > 0)
-      usage = (int)(100 * (total_diff - idle_diff) / total_diff);
-
-    result->usage[i] = usage;
+    result->usage[i] = (int)(100 * (total_diff - idle_diff) / total_diff);
   }
 
+out:
+  free(prev);
+  free(curr);
   return result;
 }
 
-// Free the allocated struct
-void free_cpu_usage(struct cpu_usage_t *data) {
-  if (!data)
+void wc_cpu_usage_free(struct wc_cpu_usage *usage) {
+  if (!usage)
     return;
-  free(data->usage);
-  free(data);
+  free(usage->usage);
+  free(usage);
 }

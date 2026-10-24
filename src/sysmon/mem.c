@@ -1,59 +1,55 @@
+#include "../../waycentral.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-struct meminfo_t {
-  unsigned long long mem_total;
-  unsigned long long mem_free;
-  unsigned long long mem_available;
-  unsigned long long buffers;
-  unsigned long long cached;
-  unsigned long long swap_total;
-  unsigned long long swap_free;
-  unsigned long long swap_used;
-  unsigned long long mem_used;
-  unsigned long long shared_mem;
-  int mem_percent;
-  int swap_percent;
-};
-
-struct meminfo_t *read_meminfo() {
+int wc_meminfo_get(struct wc_meminfo *out) {
   FILE *fp = fopen("/proc/meminfo", "r");
-  if (!fp) {
-    perror("fopen");
-    exit(1);
-  }
+  if (!fp)
+    return -1;
 
+  memset(out, 0, sizeof(*out));
+
+  // Not every line has a unit, so parse line by line
+  char line[256];
   char key[64];
-  unsigned long value;
-  char unit[32];
+  unsigned long long value;
+  unsigned long long sreclaimable = 0;
 
-  struct meminfo_t *mem = malloc(sizeof(struct meminfo_t));
+  while (fgets(line, sizeof(line), fp)) {
+    if (sscanf(line, "%63s %llu", key, &value) != 2)
+      continue;
 
-  while (fscanf(fp, "%63s %lu %31s", key, &value, unit) == 3) {
     if (strcmp(key, "MemTotal:") == 0)
-      mem->mem_total = (unsigned long long)value;
+      out->mem_total = value;
     else if (strcmp(key, "MemFree:") == 0)
-      mem->mem_free = (unsigned long long)value;
+      out->mem_free = value;
     else if (strcmp(key, "MemAvailable:") == 0)
-      mem->mem_available = (unsigned long long)value;
+      out->mem_available = value;
     else if (strcmp(key, "Buffers:") == 0)
-      mem->buffers = (unsigned long long)value;
+      out->buffers = value;
     else if (strcmp(key, "Cached:") == 0)
-      mem->cached = (unsigned long long)value;
+      out->cached = value;
+    else if (strcmp(key, "SReclaimable:") == 0)
+      sreclaimable = value;
+    else if (strcmp(key, "Shmem:") == 0)
+      out->shared = value;
     else if (strcmp(key, "SwapTotal:") == 0)
-      mem->swap_total = (unsigned long long)value;
+      out->swap_total = value;
     else if (strcmp(key, "SwapFree:") == 0)
-      mem->swap_free = (unsigned long long)value;
+      out->swap_free = value;
   }
 
   fclose(fp);
 
-  // Compute derived values
-  mem->swap_used = mem->swap_total - mem->swap_free;
-  mem->mem_used = mem->mem_total - mem->mem_free - mem->buffers - mem->cached;
-  mem->shared_mem =
-      mem->buffers; // approximate, Linux doesn't give direct "shared" easily
+  if (out->mem_total == 0)
+    return -1;
 
-  return mem;
+  // Same definition of used memory as free(1)
+  unsigned long long cache = out->cached + sreclaimable;
+  unsigned long long not_used = out->mem_free + out->buffers + cache;
+  out->mem_used = (out->mem_total > not_used) ? out->mem_total - not_used : 0;
+  out->swap_used =
+      (out->swap_total > out->swap_free) ? out->swap_total - out->swap_free : 0;
+
+  return 0;
 }
