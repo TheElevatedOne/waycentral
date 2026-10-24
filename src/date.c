@@ -60,39 +60,102 @@ int wc_calendar_make(struct wc_calendar *out, int month, int year,
   return 0;
 }
 
-static void append_calendar(struct wc_buf *buf, const struct tm *local,
-                            enum wc_week_start start) {
-  struct wc_calendar cal;
-  if (wc_calendar_make(&cal, local->tm_mon + 1, local->tm_year + 1900,
-                       start) != 0)
-    return;
-
-  /* Center the header above the 20 character wide day grid */
-  const int width = 20;
-  int padding = (width - (int)strlen(cal.header) + 1) / 2;
-  wc_buf_appendf(buf, "%*s<span font_weight='bold'>%s</span>\\n\\n",
-                 padding > 0 ? padding : 0, "", cal.header);
-
-  for (int i = 0; i < 7; i++)
-    wc_buf_appendf(buf, "%s%s", cal.weekdays[i], (i != 6) ? " " : "\\n");
-
-  for (int i = 0; i < cal.rows; i++) {
-    for (int j = 0; j < 7; j++) {
-      const char *sep = (j != 6) ? " " : "";
-      int day = cal.days[i][j];
-      if (day == 0)
-        wc_buf_appendf(buf, "  %s", sep);
-      else
-        wc_buf_appendf(buf, "<span font_weight='%s'>%02d</span>%s",
-                       (day == local->tm_mday) ? "bold" : "ultralight", day,
-                       sep);
-    }
-    if (i != cal.rows - 1)
-      wc_buf_appendf(buf, "\\n");
-  }
+/* Calendar date normalized by mktime, noon avoids DST edge cases */
+static struct tm make_date(int year, int month, int day) {
+  struct tm t = {0};
+  t.tm_year = year - 1900;
+  t.tm_mon = month - 1;
+  t.tm_mday = day;
+  t.tm_hour = 12;
+  t.tm_isdst = -1;
+  mktime(&t);
+  return t;
 }
 
-char *wc_date_json(enum wc_date_format format, enum wc_week_start start) {
+static int same_day(const struct tm *a, const struct tm *b) {
+  return a->tm_year == b->tm_year && a->tm_mon == b->tm_mon &&
+         a->tm_mday == b->tm_mday;
+}
+
+#define CAL_WIDTH 24 /* "Wk" + 2 spaces + 7 columns of "dd " */
+/* Pango attributes, used inside format strings */
+#define DIM "alpha='45%%'"
+#define WEEKEND "alpha='75%%'"
+
+/* Appends a 6 week month grid with ISO week numbers, days of the
+ * neighbouring months faded and today highlighted, in a monospace span. */
+static void append_calendar(struct wc_buf *buf, const struct tm *today,
+                            enum wc_week_start start, int month_offset) {
+  // The month to show
+  struct tm first = make_date(today->tm_year + 1900,
+                              today->tm_mon + 1 + month_offset, 1);
+  int year = first.tm_year + 1900;
+  int month = first.tm_mon + 1;
+
+  wc_buf_appendf(buf, "<span font_family='monospace'>");
+
+  char header[64];
+  strftime(header, sizeof(header), "%B %Y", &first);
+  int pad = (CAL_WIDTH - (int)strlen(header)) / 2;
+  wc_buf_appendf(buf, "%*s<span weight='bold'>%s</span>\\n\\n",
+                 pad > 0 ? pad : 0, "", header);
+
+  static const char *names_sun[7] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+  static const char *names_mon[7] = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
+  const char **names = (start == WC_WEEK_MONDAY) ? names_mon : names_sun;
+  // Columns holding Saturday and Sunday
+  int sat = (start == WC_WEEK_MONDAY) ? 5 : 6;
+  int sun = (start == WC_WEEK_MONDAY) ? 6 : 0;
+
+  wc_buf_appendf(buf, "<span " DIM ">Wk</span> ");
+  for (int i = 0; i < 7; i++) {
+    if (i == sat || i == sun)
+      wc_buf_appendf(buf, " <span weight='bold' " WEEKEND ">%s</span>",
+                     names[i]);
+    else
+      wc_buf_appendf(buf, " <span weight='bold'>%s</span>", names[i]);
+  }
+  wc_buf_appendf(buf, "\\n");
+
+  // Column of the 1st, then start the grid that many days earlier
+  int col = first.tm_wday;
+  if (start == WC_WEEK_MONDAY)
+    col = (col + 6) % 7;
+
+  for (int row = 0; row < 6; row++) {
+    // ISO week of the row's Monday
+    int monday_col = (start == WC_WEEK_MONDAY) ? 0 : 1;
+    struct tm monday = make_date(year, month, 1 - col + row * 7 + monday_col);
+    char week[8];
+    strftime(week, sizeof(week), "%V", &monday);
+    wc_buf_appendf(buf, "<span " DIM ">%s</span> ", week);
+
+    for (int c = 0; c < 7; c++) {
+      struct tm day = make_date(year, month, 1 + row * 7 + c - col);
+
+      if (same_day(&day, today))
+        wc_buf_appendf(buf,
+                       " <span weight='heavy' underline='single'>%02d</span>",
+                       day.tm_mday);
+      else if (day.tm_mon != first.tm_mon)
+        wc_buf_appendf(buf, " <span " DIM ">%02d</span>", day.tm_mday);
+      else if (c == sat || c == sun)
+        wc_buf_appendf(buf, " <span " WEEKEND ">%02d</span>", day.tm_mday);
+      else
+        wc_buf_appendf(buf, " %02d", day.tm_mday);
+    }
+    wc_buf_appendf(buf, "\\n");
+  }
+
+  char footer[96];
+  strftime(footer, sizeof(footer), "%A, %d %B %Y", today);
+  wc_buf_appendf(buf, "\\n<span weight='bold'>%s</span>", footer);
+  strftime(footer, sizeof(footer), "Week %V, Day %j", today);
+  wc_buf_appendf(buf, "\\n<span " DIM ">%s</span></span>", footer);
+}
+
+char *wc_date_json_offset(enum wc_date_format format, enum wc_week_start start,
+                          int month_offset) {
   time_t today = time(NULL);
   struct tm local;
   localtime_r(&today, &local);
@@ -114,7 +177,11 @@ char *wc_date_json(enum wc_date_format format, enum wc_week_start start) {
 
   struct wc_buf json = {0};
   wc_buf_appendf(&json, "{\"text\":\"%s\",\"tooltip\":\"", date);
-  append_calendar(&json, &local, start);
+  append_calendar(&json, &local, start, month_offset);
   wc_buf_appendf(&json, "\"}");
   return wc_buf_finish(&json);
+}
+
+char *wc_date_json(enum wc_date_format format, enum wc_week_start start) {
+  return wc_date_json_offset(format, start, 0);
 }

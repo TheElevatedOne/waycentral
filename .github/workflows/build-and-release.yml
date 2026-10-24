@@ -11,10 +11,17 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    # Arch, so the binary links against Arch's libalpm, json-c, ...
+    container:
+      image: archlinux:base-devel
+
     permissions:
       contents: write
 
     steps:
+    - name: Install dependencies
+      run: pacman -Syu --noconfirm --needed git pacman curl json-c libpulse systemd-libs gtk3 pkgconf
+
     - name: Check-out repository
       uses: actions/checkout@v4
 
