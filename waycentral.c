@@ -38,12 +38,14 @@ static void help_message(void) {
       "                Change the month of the calendar tooltip\n"
       "                of the running date modules.\n"
       "  -b, --battery Print Waybar JSON for battery.\n"
-      "  -s, --sysmon [CPU, MEM, NET]\n"
+      "  -s, --sysmon [CPU, MEM, NET, GPU [N (0*)]]\n"
       "                Print Waybar JSON for system\n"
       "                monitoring.\n"
       "                CPU -> CPU Utilization;\n"
       "                MEM -> RAM Usage;\n"
-      "                NET -> Network Usage.\n"
+      "                NET -> Network Usage;\n"
+      "                GPU -> GPU Usage of GPU N, all GPUs\n"
+      "                       in the tooltip.\n"
       "  -k, --keys [CAPS, NUM, SCROLL]\n"
       "                Print Waybar JSON class for each\n"
       "                lock key.\n"
@@ -355,13 +357,22 @@ static int run_sysmon(int argc, char **argv, const char *mode) {
     return 1;
   }
 
-  int type;
+  int type, gpu = 0, extra = 1;
+  if (strcmp(argv[0], "GPU") == 0 && argc > 1 && is_number(argv[1])) {
+    gpu = atoi(argv[1]);
+    extra = 2;
+  }
+  if (argc > extra)
+    return unknown_arg(argv[extra], mode), 1;
+
   if (strcmp(argv[0], "CPU") == 0)
     type = 0;
   else if (strcmp(argv[0], "MEM") == 0)
     type = 1;
   else if (strcmp(argv[0], "NET") == 0)
     type = 2;
+  else if (strcmp(argv[0], "GPU") == 0)
+    type = 3;
   else
     return unknown_arg(argv[0], mode), 1;
 
@@ -370,8 +381,10 @@ static int run_sysmon(int argc, char **argv, const char *mode) {
       emit(wc_cpu_json(1000));
     else if (type == 1)
       emit(wc_mem_json());
-    else
+    else if (type == 2)
       emit(wc_net_json(1000));
+    else
+      emit(wc_gpu_json(gpu, 1000));
     sleep(5);
   }
 }

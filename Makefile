@@ -2,7 +2,7 @@
 PROJECT_NAME := waycentral
 LIB_SRCS := src/ap.c src/audio.c src/batt.c src/clock.c src/date.c \
 	src/hyprland.c src/lock.c src/music.c src/network.c src/sysmon.c \
-	src/util.c src/sysmon/cpu.c src/sysmon/mem.c src/sysmon/net.c \
+	src/util.c src/sysmon/cpu.c src/sysmon/gpu.c src/sysmon/mem.c src/sysmon/net.c \
 	src/updates/aur.c src/updates/pacman.c
 TRAY_SRCS := src/tray/systray.c
 LIB_DEPS := libalpm libcurl json-c libsystemd libpulse

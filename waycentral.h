@@ -168,10 +168,36 @@ struct wc_netstat {
  * Returns 0, or -1 on error. */
 WC_API int wc_netstat_get(struct wc_netstat *out, int interval_ms);
 
+#define WC_MAX_GPUS 8
+
+/* -1 (or empty) for anything the driver does not report */
+struct wc_gpu {
+  char card[32];   /* DRM card, e.g. "card1"                       */
+  char driver[32]; /* amdgpu, radeon, i915, xe, nouveau, nvidia ... */
+  char name[128];  /* from the driver, or hwdata's pci.ids          */
+  int usage;       /* percent                                       */
+  long long vram_used;  /* bytes */
+  long long vram_total; /* bytes */
+  int temp;        /* °C                                            */
+  double power;    /* W                                             */
+  int core_clock;  /* MHz                                           */
+  int mem_clock;   /* MHz                                           */
+  int fan_rpm;
+  int fan_percent;
+};
+
+/* Reads every GPU in /sys/class/drm (AMD and Intel through sysfs, NVIDIA
+ * through NVML when its driver is installed). Returns how many were found,
+ * or -1 on error. */
+WC_API int wc_gpu_list(struct wc_gpu *out, int max);
+
 /* The *_json functions block for interval_ms while sampling. */
 WC_API char *wc_cpu_json(int interval_ms);
 WC_API char *wc_mem_json(void);
 WC_API char *wc_net_json(int interval_ms);
+
+/* {"text":"<usage of GPU index>%","percentage":..,"tooltip":"<all GPUs>"} */
+WC_API char *wc_gpu_json(int index, int interval_ms);
 
 /* ------------------------------------------------------------------------ */
 /* Lock Keys                                                                */
