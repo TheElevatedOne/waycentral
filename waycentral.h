@@ -181,6 +181,25 @@ WC_API int wc_lock_keys_get(struct wc_lock_keys *out);
  * Without a readable keyboard the class is "unknown". */
 WC_API char *wc_lock_key_json(enum wc_lock_key key);
 
+/* Event driven alternative to polling wc_lock_keys_get(): keeps every
+ * keyboard in /dev/input open and wakes up as soon as a lock key changes. */
+struct wc_lock_monitor;
+
+/* Returns NULL on allocation failure. Keyboards are (re)scanned on demand,
+ * so it is fine if none are present yet. */
+WC_API struct wc_lock_monitor *wc_lock_monitor_open(void);
+WC_API void wc_lock_monitor_close(struct wc_lock_monitor *mon);
+
+/* Blocks until the lock key state differs from *state or timeout_ms passes
+ * (-1 waits forever). On return *state holds the current state.
+ * Returns 1 if it changed, 0 on timeout, -1 if no keyboard is readable. */
+WC_API int wc_lock_monitor_wait(struct wc_lock_monitor *mon,
+                                struct wc_lock_keys *state, int timeout_ms);
+
+/* JSON for one key from an already known state (see wc_lock_key_json). */
+WC_API char *wc_lock_key_json_from(enum wc_lock_key key,
+                                   const struct wc_lock_keys *state);
+
 /* ------------------------------------------------------------------------ */
 /* Hotspot (create_ap / linux-wifi-hotspot)                                 */
 /* ------------------------------------------------------------------------ */

@@ -262,6 +262,9 @@ Prints Current Internet Speed/Usage (Sum of Upload and Download). In tooltip sho
 
 Prints a class of either "on" or "off". Useful with CSS.
 
+The keyboards are watched for events, so the module updates the moment a lock key changes
+(needs read access to `/dev/input/event*`, usually the `input` group).
+
 **Results:**
 
 Either

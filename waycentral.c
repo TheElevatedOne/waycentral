@@ -1,7 +1,9 @@
 #include "waycentral.h"
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 enum module {
@@ -53,6 +55,51 @@ static void emit(char *json) {
   if (json)
     printf("%s\n", json);
   free(json);
+}
+
+/* Sleeps until the next multiple of period seconds on the wall clock, so the
+ * clock ticks exactly when the second changes instead of drifting */
+static void sleep_until_next(int period) {
+  struct timespec now;
+  clock_gettime(CLOCK_REALTIME, &now);
+
+  struct timespec next = {
+      .tv_sec = (now.tv_sec / period + 1) * period,
+      .tv_nsec = 0,
+  };
+  while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &next, NULL) == EINTR)
+    ;
+}
+
+static int key_state(enum wc_lock_key key, const struct wc_lock_keys *keys) {
+  return (key == WC_KEY_CAPS)  ? keys->caps
+         : (key == WC_KEY_NUM) ? keys->num
+                               : keys->scroll;
+}
+
+/* Prints the key state whenever it changes, without polling */
+static int watch_lock_key(enum wc_lock_key key) {
+  struct wc_lock_monitor *mon = wc_lock_monitor_open();
+  if (!mon)
+    return 1;
+
+  struct wc_lock_keys keys = {-1, -1, -1};
+  int last = -2;
+
+  while (1) {
+    int r = wc_lock_monitor_wait(mon, &keys, -1);
+    if (r < 0) {
+      // No keyboard readable yet, report it once and retry
+      if (last != -1)
+        emit(wc_lock_key_json_from(key, NULL));
+      last = -1;
+      keys = (struct wc_lock_keys){-1, -1, -1};
+      sleep(1);
+    } else if (key_state(key, &keys) != last) {
+      last = key_state(key, &keys);
+      emit(wc_lock_key_json_from(key, &keys));
+    }
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -147,11 +194,11 @@ int main(int argc, char *argv[]) {
     switch (module) {
     case MOD_CLOCK:
       emit(wc_clock_json(clock_format));
-      sleep(1);
+      sleep_until_next(1);
       break;
     case MOD_DATE:
       emit(wc_date_json(date_format, week_start));
-      sleep(15);
+      sleep_until_next(60);
       break;
     case MOD_BATTERY:
       emit(wc_battery_json());
@@ -167,9 +214,7 @@ int main(int argc, char *argv[]) {
       sleep(5);
       break;
     case MOD_KEYS:
-      emit(wc_lock_key_json(key));
-      sleep(1);
-      break;
+      return watch_lock_key(key);
     case MOD_AP:
       emit(wc_hotspot_json());
       sleep(1);
