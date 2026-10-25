@@ -106,7 +106,9 @@ static void parse_config(Tray *tray, const wbcffi_config_entry *entries,
 static gchar *prop_string(GDBusProxy *proxy, const char *name) {
   GVariant *v = g_dbus_proxy_get_cached_property(proxy, name);
   gchar *s = NULL;
-  if (v && g_variant_is_of_type(v, G_VARIANT_TYPE_STRING))
+  // Menu is an object path ("o"), the rest are strings
+  if (v && (g_variant_is_of_type(v, G_VARIANT_TYPE_STRING) ||
+            g_variant_is_of_type(v, G_VARIANT_TYPE_OBJECT_PATH)))
     s = g_variant_dup_string(v, NULL);
   if (v)
     g_variant_unref(v);
