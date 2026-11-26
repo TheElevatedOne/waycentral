@@ -40,10 +40,22 @@ typedef struct {
 
 /* An item registered with our own watcher */
 typedef struct {
-  Tray *tray;
   char *id;
   guint name_watch;
 } WatchedItem;
+
+/* The StatusNotifierWatcher, one per process: every tray instance (one per
+ * bar) shares the session bus connection, and two instances owning and
+ * releasing the same name on it would take it from each other. */
+typedef struct {
+  int refs;
+  GDBusConnection *bus;
+  guint own;
+  guint reg;
+  GPtrArray *watched;
+} Watcher;
+
+static Watcher watcher;
 
 struct Tray {
   wbcffi_module *obj;
@@ -57,11 +69,6 @@ struct Tray {
   GCancellable *cancel; /* for calls that outlive nothing but the tray */
   GList *items;
   gboolean updating;
-
-  /* watcher side */
-  guint watcher_own;
-  guint watcher_reg;
-  GPtrArray *watched;
 
   /* host side */
   char *host_name;
@@ -800,8 +807,8 @@ static void watched_free(gpointer data) {
   g_free(w);
 }
 
-static void emit_watcher_signal(Tray *tray, const char *name, const char *id) {
-  g_dbus_connection_emit_signal(tray->bus, NULL, WATCHER_PATH, WATCHER_NAME,
+static void emit_watcher_signal(const char *name, const char *id) {
+  g_dbus_connection_emit_signal(watcher.bus, NULL, WATCHER_PATH, WATCHER_NAME,
                                 name, id ? g_variant_new("(s)", id) : NULL,
                                 NULL);
 }
@@ -811,37 +818,34 @@ static void on_item_vanished(GDBusConnection *c, const gchar *name,
   (void)c;
   (void)name;
   WatchedItem *w = data;
-  Tray *tray = w->tray;
   gchar *id = g_strdup(w->id);
-  g_ptr_array_remove(tray->watched, w); // frees w
-  emit_watcher_signal(tray, "StatusNotifierItemUnregistered", id);
+  g_ptr_array_remove(watcher.watched, w); // frees w
+  emit_watcher_signal("StatusNotifierItemUnregistered", id);
   g_free(id);
 }
 
-static void watcher_register_item(Tray *tray, const char *sender,
-                                  const char *service) {
+static void watcher_register_item(const char *sender, const char *service) {
   // Either an object path on the sender (Ayatana) or a bus name
   gchar *id = (service[0] == '/') ? g_strconcat(sender, service, NULL)
                                   : g_strconcat(service, "/StatusNotifierItem",
                                                 NULL);
-  for (guint i = 0; i < tray->watched->len; i++) {
-    if (strcmp(((WatchedItem *)tray->watched->pdata[i])->id, id) == 0) {
+  for (guint i = 0; i < watcher.watched->len; i++) {
+    if (strcmp(((WatchedItem *)watcher.watched->pdata[i])->id, id) == 0) {
       g_free(id);
       return;
     }
   }
 
   WatchedItem *w = g_new0(WatchedItem, 1);
-  w->tray = tray;
   w->id = id;
   gchar *bus_name = (service[0] == '/') ? g_strdup(sender) : g_strdup(service);
   w->name_watch = g_bus_watch_name_on_connection(
-      tray->bus, bus_name, G_BUS_NAME_WATCHER_FLAGS_NONE, NULL,
+      watcher.bus, bus_name, G_BUS_NAME_WATCHER_FLAGS_NONE, NULL,
       on_item_vanished, w, NULL);
   g_free(bus_name);
-  g_ptr_array_add(tray->watched, w);
+  g_ptr_array_add(watcher.watched, w);
 
-  emit_watcher_signal(tray, "StatusNotifierItemRegistered", id);
+  emit_watcher_signal("StatusNotifierItemRegistered", id);
 }
 
 static void watcher_method(GDBusConnection *c, const gchar *sender,
@@ -851,14 +855,14 @@ static void watcher_method(GDBusConnection *c, const gchar *sender,
   (void)c;
   (void)path;
   (void)iface;
-  Tray *tray = data;
+  (void)data;
   const gchar *service;
   g_variant_get(params, "(&s)", &service);
 
   if (strcmp(method, "RegisterStatusNotifierItem") == 0)
-    watcher_register_item(tray, sender, service);
+    watcher_register_item(sender, service);
   else if (strcmp(method, "RegisterStatusNotifierHost") == 0)
-    emit_watcher_signal(tray, "StatusNotifierHostRegistered", NULL);
+    emit_watcher_signal("StatusNotifierHostRegistered", NULL);
 
   g_dbus_method_invocation_return_value(inv, NULL);
 }
@@ -871,14 +875,14 @@ static GVariant *watcher_get(GDBusConnection *c, const gchar *sender,
   (void)path;
   (void)iface;
   (void)err;
-  Tray *tray = data;
+  (void)data;
 
   if (strcmp(prop, "RegisteredStatusNotifierItems") == 0) {
     GVariantBuilder b;
     g_variant_builder_init(&b, G_VARIANT_TYPE("as"));
-    for (guint i = 0; i < tray->watched->len; i++)
+    for (guint i = 0; i < watcher.watched->len; i++)
       g_variant_builder_add(&b, "s",
-                            ((WatchedItem *)tray->watched->pdata[i])->id);
+                            ((WatchedItem *)watcher.watched->pdata[i])->id);
     return g_variant_builder_end(&b);
   }
   if (strcmp(prop, "IsStatusNotifierHostRegistered") == 0)
@@ -891,28 +895,46 @@ static GVariant *watcher_get(GDBusConnection *c, const gchar *sender,
 static const GDBusInterfaceVTable watcher_vtable = {watcher_method,
                                                     watcher_get, NULL, {0}};
 
-static void on_watcher_acquired(GDBusConnection *c, const gchar *name,
-                                gpointer data) {
-  (void)name;
-  Tray *tray = data;
-  GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(watcher_xml, NULL);
-  if (!info)
-    return;
-  tray->watcher_reg = g_dbus_connection_register_object(
-      c, WATCHER_PATH, info->interfaces[0], &watcher_vtable, tray, NULL, NULL);
-  g_dbus_node_info_unref(info);
-}
-
 static void on_watcher_lost(GDBusConnection *c, const gchar *name,
                             gpointer data) {
+  (void)c;
   (void)name;
-  Tray *tray = data;
-  // Another watcher (e.g. Waybar's own tray) runs; we only act as a host
-  if (tray->watcher_reg && c) {
-    g_dbus_connection_unregister_object(c, tray->watcher_reg);
-    tray->watcher_reg = 0;
+  (void)data;
+  // Another watcher (e.g. Waybar's own tray, kded6) has the name; items
+  // register with it, we only act as a host. The object stays exported for
+  // when the name comes back to us.
+  g_ptr_array_set_size(watcher.watched, 0);
+}
+
+static void watcher_ref(GDBusConnection *bus) {
+  if (watcher.refs++ > 0)
+    return;
+  watcher.bus = g_object_ref(bus);
+  watcher.watched = g_ptr_array_new_with_free_func(watched_free);
+  // Exported before the name is taken: apps call RegisterStatusNotifierItem
+  // as soon as they see the name appear, and a call that arrived before the
+  // object existed failed, so apps that don't retry (Steam) lost their item.
+  GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(watcher_xml, NULL);
+  if (info) {
+    watcher.reg = g_dbus_connection_register_object(
+        bus, WATCHER_PATH, info->interfaces[0], &watcher_vtable, NULL, NULL,
+        NULL);
+    g_dbus_node_info_unref(info);
   }
-  g_ptr_array_set_size(tray->watched, 0);
+  watcher.own = g_bus_own_name_on_connection(
+      bus, WATCHER_NAME, G_BUS_NAME_OWNER_FLAGS_NONE, NULL, on_watcher_lost,
+      NULL, NULL);
+}
+
+static void watcher_unref(void) {
+  if (watcher.refs == 0 || --watcher.refs > 0)
+    return;
+  g_bus_unown_name(watcher.own);
+  if (watcher.reg)
+    g_dbus_connection_unregister_object(watcher.bus, watcher.reg);
+  g_ptr_array_free(watcher.watched, TRUE);
+  g_object_unref(watcher.bus);
+  memset(&watcher, 0, sizeof watcher);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1009,10 +1031,7 @@ void *wbcffi_init(const wbcffi_init_info *info,
   gtk_container_add(root, tray->box);
   gtk_widget_show(tray->box);
 
-  tray->watched = g_ptr_array_new_with_free_func(watched_free);
-  tray->watcher_own = g_bus_own_name_on_connection(
-      tray->bus, WATCHER_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
-      on_watcher_acquired, on_watcher_lost, tray, NULL);
+  watcher_ref(tray->bus);
 
   // Several bars load the module, so the host name has to be unique
   static int instance = 0;
@@ -1048,10 +1067,7 @@ void wbcffi_deinit(void *instance) {
   g_dbus_connection_signal_unsubscribe(tray->bus, tray->sub_registered);
   g_dbus_connection_signal_unsubscribe(tray->bus, tray->sub_unregistered);
   g_bus_unown_name(tray->host_own);
-  if (tray->watcher_reg)
-    g_dbus_connection_unregister_object(tray->bus, tray->watcher_reg);
-  g_bus_unown_name(tray->watcher_own);
-  g_ptr_array_free(tray->watched, TRUE);
+  watcher_unref();
 
   tray_clear_items(tray);
   g_free(tray->host_name);
